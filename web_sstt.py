@@ -62,6 +62,8 @@ def process_cookies(headers,  cs):
 
 
 def process_web_request(cs, webroot):
+    print('Aquí hace la respuesta')
+    cs.close()
     """ Procesamiento principal de los mensajes recibidos.
         Típicamente se seguirá un procedimiento similar al siguiente (aunque el alumno puede modificarlo si lo desea)
 
@@ -143,10 +145,9 @@ def main():
 
         while True:
             s2, data = s1.accept()
-            proceso = multiprocessing.Process(target=process_web_request(cs=None, webroot=args.webroot))
+            proceso = multiprocessing.Process(target=process_web_request(cs=s2, webroot=args.webroot))
             proceso.start()
             proceso.join()
-            s2.close()
             """
             Cómo sería en Linux:
 
