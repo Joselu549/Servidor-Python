@@ -7,7 +7,7 @@ import select
 import types        # Para definir el tipo de datos data
 import argparse     # Leer parametros de ejecución
 import os           # Obtener ruta y extension
-import multiprocessing
+# import multiprocessing
 from datetime import datetime, timedelta # Fechas de los mensajes HTTP
 import time         # Timeout conexión
 import sys          # sys.exit
@@ -16,7 +16,7 @@ import logging      # Para imprimir logs
 
 
 BUFSIZE = 8192 # Tamaño máximo del buffer que se puede utilizar
-TIMEOUT_CONNECTION = 20 # Timout para la conexión persistente
+TIMEOUT_CONNECTION = 9+7+5+2+10 # Timout para la conexión persistente
 MAX_ACCESOS = 10
 
 # Extensiones admitidas (extension, name in HTTP)
@@ -41,7 +41,10 @@ def recibir_mensaje(cs):
     """ Esta función recibe datos a través del socket cs
         Leemos la información que nos llega. recv() devuelve un string con los datos.
     """
-    pass
+    buff_size = BUFSIZE
+    data = cs.recv(buff_size)
+    datos = data.decode()
+    return datos
 
 
 def cerrar_conexion(cs):
@@ -62,24 +65,66 @@ def process_cookies(headers,  cs):
 
 
 def process_web_request(cs, webroot):
-    print('Aquí hace la respuesta')
+    """
+    try:
+        with open(webroot, 'r') as index:
+            contenido = index.read()
+            # print(contenido)
+            cs.sendall(contenido.encode())
+    except FileNotFoundError:
+        print(f"El archivo '{webroot}' no se encontró")
+    except Exception as e:
+        print(f"Se produjo un error {e}")
+    """
+    rlist = [cs]
+    wlist = []
+    xlist = []
+    while True:
+        rsublist, _, _ = select.select(rlist, wlist, xlist, TIMEOUT_CONNECTION)
+        if rsublist == []:
+            print('Salta por timeout')
+            break
+        datos = recibir_mensaje(cs)
+        lineas = datos.splitlines()
+        parametros = [lineas[0].split(' ', 1)]
+        parametros += [linea.split(': ', 1) for linea in lineas if ': ' in linea]            
+        
+        for param in parametros:
+            print(param)
+        
+        if parametros[0][1].split(' ')[1] == 'HTTP/1.1':
+            print('Versión 1.1 de HTTP')
+        
+        if parametros[0][0] == 'GET':
+            print('Método GET')
+        elif parametros[0][0] == 'POST':
+            print('Método POST')
+        else:
+            print('Method Not Allowed 405')
+            # return 405
+        
+        if parametros[0][1].split(' ')[0] == '/':
+            print('Es el index.html')
+            parametros[0][1] = '/index.html' + 0 ####
+        ruta_absoluta = webroot + parametros[0][1].split(' ')[0]
+            
     """ Procesamiento principal de los mensajes recibidos.
         Típicamente se seguirá un procedimiento similar al siguiente (aunque el alumno puede modificarlo si lo desea)
 
-        * Bucle para esperar hasta que lleguen datos en la red a través del socket cs con select()
+        * Bucle para esperar hasta que lleguen datos en la red a través del socket cs con select() ->
 
-            * Se comprueba si hay que cerrar la conexión por exceder TIMEOUT_CONNECTION segundos
+            * Se comprueba si hay que cerrar la conexión por exceder TIMEOUT_CONNECTION segundos ->
               sin recibir ningún mensaje o hay datos. Se utiliza select.select
 
-            * Si no es por timeout y hay datos en el socket cs.
-                * Leer los datos con recv.
-                * Analizar que la línea de solicitud y comprobar está bien formateada según HTTP 1.1
-                    * Devuelve una lista con los atributos de las cabeceras.
-                    * Comprobar si la versión de HTTP es 1.1
-                    * Comprobar si es un método GET o POST. Si no devolver un error Error 405 "Method Not Allowed".
+            * Si no es por timeout y hay datos en el socket cs. ->
+                * Leer los datos con recv. ->
+                * Analizar que la línea de solicitud y comprobar está bien formateada según HTTP 1.1 ->
+                    * Devuelve una lista con los atributos de las cabeceras. ->
+                    * Comprobar si la versión de HTTP es 1.1 ->
+                    * Comprobar si es un método GET o POST. Si no devolver un error Error 405 "Method Not Allowed". ->
                     * Leer URL y eliminar parámetros si los hubiera
-                    * Comprobar si el recurso solicitado es /, En ese caso el recurso es index.html
-                    * Construir la ruta absoluta del recurso (webroot + recurso solicitado)
+                    * Comprobar si el recurso solicitado es /, En ese caso el recurso es index.html ->
+                    * Construir la ruta absoluta del recurso (webroot + recurso solicitado) ->
                     * Comprobar que el recurso (fichero) existe, si no devolver Error 404 "Not found"
                     * Analizar las cabeceras. Imprimir cada cabecera y su valor. Si la cabecera es Cookie comprobar
                       el valor de cookie_counter para ver si ha llegado a MAX_ACCESOS.
@@ -152,21 +197,9 @@ def main():
             pid = os.fork()
 
             if pid == 0:
-                # s1.close()
                 process_web_request(cs=s2, webroot=args.webroot)
             else:
                 s2.close()
-            """
-            Cómo sería en Linux:
-
-            pid = os.fork()
-
-            if pid == 0:
-                process_web_request(cs=None, webroot=args.webroot)
-            else:
-                s2.close()
-
-            """
     except KeyboardInterrupt:
         True
 
