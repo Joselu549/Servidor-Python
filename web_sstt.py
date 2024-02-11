@@ -61,21 +61,23 @@ def process_cookies(headers,  cs):
         4. Si se encuentra y tiene el valor MAX_ACCESSOS se devuelve MAX_ACCESOS
         5. Si se encuentra y tiene un valor 1 <= x < MAX_ACCESOS se incrementa en 1 y se devuelve el valor
     """
-    pass
+    for param in headers:
+        if param[0] == 'Cookie':
+            if re.fullmatch('cookie_counter=', param[1]):
+                string = param[1].split('cookie_counter=')
+                cookie_counter = string[1].split(';')
+                if cookie_counter == MAX_ACCESOS:
+                    return MAX_ACCESOS
+                elif cookie_counter >= 1 and cookie_counter < MAX_ACCESOS:
+                    cookie_counter += 1
+                    return cookie_counter
+            else:
+                return 1
+            
+            
 
 
 def process_web_request(cs, webroot):
-    """
-    try:
-        with open(webroot, 'r') as index:
-            contenido = index.read()
-            # print(contenido)
-            cs.sendall(contenido.encode())
-    except FileNotFoundError:
-        print(f"El archivo '{webroot}' no se encontró")
-    except Exception as e:
-        print(f"Se produjo un error {e}")
-    """
     rlist = [cs]
     wlist = []
     xlist = []
@@ -89,9 +91,6 @@ def process_web_request(cs, webroot):
         parametros = [lineas[0].split(' ', 1)]
         parametros += [linea.split(': ', 1) for linea in lineas if ': ' in linea]            
         
-        for param in parametros:
-            print(param)
-        
         if parametros[0][1].split(' ')[1] == 'HTTP/1.1':
             print('Versión 1.1 de HTTP')
         
@@ -103,10 +102,25 @@ def process_web_request(cs, webroot):
             print('Method Not Allowed 405')
             # return 405
         
-        if parametros[0][1].split(' ')[0] == '/':
+        if parametros[0][1].split(' ')[0] == '/' or parametros[0][1].split(' ')[0] == '/index.html':
             print('Es el index.html')
-            parametros[0][1] = '/index.html' + 0 ####
+            parametros[0][1] = 'index.html'
         ruta_absoluta = webroot + parametros[0][1].split(' ')[0]
+        
+        if not os.path.isfile(ruta_absoluta):
+            print('ERROR: La ruta no es un fichero o el fichero no existe')
+            ######
+            # return 404 #?
+            ######
+        
+        for param in parametros:
+            print('Cabecera: ' + param[0] + ' Valor: ' + param[1])
+            
+        cookie_counter = process_cookies(parametros, cs)
+        
+        if cookie_counter == MAX_ACCESOS:
+            return 403
+            ##########
             
     """ Procesamiento principal de los mensajes recibidos.
         Típicamente se seguirá un procedimiento similar al siguiente (aunque el alumno puede modificarlo si lo desea)
@@ -125,10 +139,10 @@ def process_web_request(cs, webroot):
                     * Leer URL y eliminar parámetros si los hubiera
                     * Comprobar si el recurso solicitado es /, En ese caso el recurso es index.html ->
                     * Construir la ruta absoluta del recurso (webroot + recurso solicitado) ->
-                    * Comprobar que el recurso (fichero) existe, si no devolver Error 404 "Not found"
+                    * Comprobar que el recurso (fichero) existe, si no devolver Error 404 "Not found" ->
                     * Analizar las cabeceras. Imprimir cada cabecera y su valor. Si la cabecera es Cookie comprobar
-                      el valor de cookie_counter para ver si ha llegado a MAX_ACCESOS.
-                      Si se ha llegado a MAX_ACCESOS devolver un Error "403 Forbidden"
+                      el valor de cookie_counter para ver si ha llegado a MAX_ACCESOS. ->
+                      Si se ha llegado a MAX_ACCESOS devolver un Error "403 Forbidden" ->
                     * Obtener el tamaño del recurso en bytes.
                     * Extraer extensión para obtener el tipo de archivo. Necesario para la cabecera Content-Type
                     * Preparar respuesta con código 200. Construir una respuesta que incluya: la línea de respuesta y
