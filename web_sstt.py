@@ -65,17 +65,38 @@ def process_cookies(headers,  cs):
         if param[0] == 'Cookie':
             if re.fullmatch('cookie_counter=', param[1]):
                 string = param[1].split('cookie_counter=')
-                cookie_counter = string[1].split(';')
+                cookie_counter = re.match('^[0-9]+', string[1]).group()
                 if cookie_counter == MAX_ACCESOS:
                     return MAX_ACCESOS
                 elif cookie_counter >= 1 and cookie_counter < MAX_ACCESOS:
                     cookie_counter += 1
                     return cookie_counter
-            else:
-                return 1
+        else:
+            return 1
             
-            
-
+def construir_mensaje(cs, webroot, tam, extension, cookie_counter, codigo, fich):
+    ruta = webroot + 'http_response.html'
+    f = open(ruta, 'w')
+    if codigo == 405:
+        pass
+    elif codigo == 404:
+        pass
+    elif codigo == 403:
+        pass
+    else:
+        f.write('HTTP/1.1 200 OK\r\n')
+        f.write('Date: ' + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT\r\n'))
+        f.write('Server: Servidor Python/1.0.0 (Linux)\r\n')
+        f.write('Connection: Keep-Alive\r\n')
+        f.write('Set-Cookie: ' + str(cookie_counter) + '\r\n')
+        f.write('Content-Length: ' + str(tam) + '\r\n')
+        f.write('Content-Type: text/' + str(extension) + '; charset=ISO-8859-1\r\n')
+        f.write('\r\n')
+        fichero = open(fich)
+        f.write(fichero.read())
+        
+        
+    f.close()
 
 def process_web_request(cs, webroot):
     rlist = [cs]
@@ -101,27 +122,35 @@ def process_web_request(cs, webroot):
         else:
             print('Method Not Allowed 405')
             # return 405
+            construir_mensaje(cs, webroot, 0, '', 0, 405)
+            cerrar_conexion(cs)
         
         if parametros[0][1].split(' ')[0] == '/' or parametros[0][1].split(' ')[0] == '/index.html':
             print('Es el index.html')
             parametros[0][1] = 'index.html'
         ruta_absoluta = webroot + parametros[0][1].split(' ')[0]
         
+        tam = os.stat(ruta_absoluta).st_size
+        extension = os.path.basename(ruta_absoluta).split('.')[1]
+        cookie_counter = process_cookies(parametros, cs)
+        print(cookie_counter)
+        print('"""""')
         if not os.path.isfile(ruta_absoluta):
             print('ERROR: La ruta no es un fichero o el fichero no existe')
             ######
             # return 404 #?
             ######
+            construir_mensaje(cs, webroot, 0, '', cookie_counter, 404)
+            cerrar_conexion(cs)
         
         for param in parametros:
             print('Cabecera: ' + param[0] + ' Valor: ' + param[1])
             
-        cookie_counter = process_cookies(parametros, cs)
-        
         if cookie_counter == MAX_ACCESOS:
-            return 403
-            ##########
+            construir_mensaje(cs, webroot, tam, extension, cookie_counter, 403)
+            cerrar_conexion(cs)
             
+        construir_mensaje(cs, webroot, tam, extension, cookie_counter, 200, ruta_absoluta)
     """ Procesamiento principal de los mensajes recibidos.
         Típicamente se seguirá un procedimiento similar al siguiente (aunque el alumno puede modificarlo si lo desea)
 
@@ -143,8 +172,8 @@ def process_web_request(cs, webroot):
                     * Analizar las cabeceras. Imprimir cada cabecera y su valor. Si la cabecera es Cookie comprobar
                       el valor de cookie_counter para ver si ha llegado a MAX_ACCESOS. ->
                       Si se ha llegado a MAX_ACCESOS devolver un Error "403 Forbidden" ->
-                    * Obtener el tamaño del recurso en bytes.
-                    * Extraer extensión para obtener el tipo de archivo. Necesario para la cabecera Content-Type
+                    * Obtener el tamaño del recurso en bytes. ->
+                    * Extraer extensión para obtener el tipo de archivo. Necesario para la cabecera Content-Type ->
                     * Preparar respuesta con código 200. Construir una respuesta que incluya: la línea de respuesta y
                       las cabeceras Date, Server, Connection, Set-Cookie (para la cookie cookie_counter),
                       Content-Length y Content-Type.
