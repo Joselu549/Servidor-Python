@@ -34,8 +34,8 @@ def enviar_mensaje(cs, data):
     """ Esta función envía datos (data) a través del socket cs
         Devuelve el número de bytes enviados.
     """
-    pass
-
+    bytes = cs.send(data)
+    return bytes
 
 def recibir_mensaje(cs):
     """ Esta función recibe datos a través del socket cs
@@ -74,30 +74,36 @@ def process_cookies(headers,  cs):
         else:
             return 1
             
-def construir_mensaje(cs, webroot, tam, extension, cookie_counter, codigo, fich):
-    ruta = webroot + 'http_response.html'
-    f = open(ruta, 'w')
+def construir_cabeceras(tam, extension, cookie_counter, codigo):
+    f = ''
     if codigo == 405:
-        pass
+        f += 'HTTP/1.1 405 Method Not Allowed\r\n'
+        f += 'Allow: GET, POST\r\n'
     elif codigo == 404:
-        pass
+        f += 'HTTP/1.1 404 Not Found\r\n'
     elif codigo == 403:
-        pass
+        f += 'HTTP/1.1 403 Forbidden\r\n'
     else:
-        f.write('HTTP/1.1 200 OK\r\n')
-        f.write('Date: ' + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT\r\n'))
-        f.write('Server: Servidor Python/1.0.0 (Linux)\r\n')
-        f.write('Connection: Keep-Alive\r\n')
-        f.write('Set-Cookie: ' + str(cookie_counter) + '\r\n')
-        f.write('Content-Length: ' + str(tam) + '\r\n')
-        f.write('Content-Type: text/' + str(extension) + '; charset=ISO-8859-1\r\n')
-        f.write('\r\n')
-        fichero = open(fich)
-        f.write(fichero.read())
-        
-        
-    f.close()
+        f += 'HTTP/1.1 200 OK\r\n'
+        f += 'Date: ' + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT\r\n')
+        f += 'Server: Servidor Python/1.0.0 (Linux)\r\n'
+        f += 'Connection: Keep-Alive\r\n'
+        f += 'Set-Cookie: ' + str(cookie_counter) + '\r\n'
+        f += 'Content-Length: ' + str(tam) + '\r\n'
+        if extension == 'html':
+            f += 'Content-Type: text/' + str(extension) + '; charset=ISO-8859-1\r\n'
+        else:
+            f += 'Content-Type: image/' + str(extension) + '\r\n'
+        f += '\r\n'
+    return f.encode()
 
+def construir_mensaje(ruta):
+    f = b''
+    fichero = open(ruta, 'rb')
+    while read_bytes := fichero.read(BUFSIZE):
+        f += read_bytes
+    return f
+    
 def process_web_request(cs, webroot):
     rlist = [cs]
     wlist = []
@@ -116,41 +122,37 @@ def process_web_request(cs, webroot):
             print('Versión 1.1 de HTTP')
         
         if parametros[0][0] == 'GET':
-            print('Método GET')
+            print('Método GET ' + parametros[0][1].split(' ')[0])
         elif parametros[0][0] == 'POST':
             print('Método POST')
         else:
             print('Method Not Allowed 405')
-            # return 405
-            construir_mensaje(cs, webroot, 0, '', 0, 405)
+            construir_cabeceras(0, '', 0, 405)
             cerrar_conexion(cs)
         
         if parametros[0][1].split(' ')[0] == '/' or parametros[0][1].split(' ')[0] == '/index.html':
-            print('Es el index.html')
-            parametros[0][1] = 'index.html'
+            parametros[0][1] = '/index.html'
         ruta_absoluta = webroot + parametros[0][1].split(' ')[0]
         
-        tam = os.stat(ruta_absoluta).st_size
-        extension = os.path.basename(ruta_absoluta).split('.')[1]
-        cookie_counter = process_cookies(parametros, cs)
-        print(cookie_counter)
-        print('"""""')
-        if not os.path.isfile(ruta_absoluta):
-            print('ERROR: La ruta no es un fichero o el fichero no existe')
-            ######
-            # return 404 #?
-            ######
-            construir_mensaje(cs, webroot, 0, '', cookie_counter, 404)
+        if os.path.isfile(ruta_absoluta):
+            tam = os.stat(ruta_absoluta).st_size
+            extension = os.path.basename(ruta_absoluta).split('.')[1]
+            cookie_counter = process_cookies(parametros, cs)
+            if cookie_counter == MAX_ACCESOS:
+                construir_cabeceras(0, '', cookie_counter, 403)
+                cerrar_conexion(cs)
+            else:
+                resp = construir_cabeceras(tam, extension, cookie_counter, 200)
+                resp += construir_mensaje(ruta_absoluta)
+                bytes = enviar_mensaje(cs, resp)
+        else:
+            construir_cabeceras(0, '', 0, 404)
             cerrar_conexion(cs)
+            
         
-        for param in parametros:
-            print('Cabecera: ' + param[0] + ' Valor: ' + param[1])
-            
-        if cookie_counter == MAX_ACCESOS:
-            construir_mensaje(cs, webroot, tam, extension, cookie_counter, 403)
-            cerrar_conexion(cs)
-            
-        construir_mensaje(cs, webroot, tam, extension, cookie_counter, 200, ruta_absoluta)
+        
+        
+        
     """ Procesamiento principal de los mensajes recibidos.
         Típicamente se seguirá un procedimiento similar al siguiente (aunque el alumno puede modificarlo si lo desea)
 
