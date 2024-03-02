@@ -76,7 +76,17 @@ def process_cookies(headers,  cs):
     #     else:
     #     return 1
     
-    pass
+    valor = headers['Cookie']
+    print(valor)
+    if re.match(r'cookie_counter=', valor):
+        cookie_counter = valor.split('cookie_counter=')[1].split(';')[0]
+        if cookie_counter == MAX_ACCESOS:
+            return MAX_ACCESOS
+        elif cookie_counter >= 1 and cookie_counter < MAX_ACCESOS:
+            cookie_counter += 1
+            return cookie_counter
+    
+    return 1
             
 def construir_cabeceras(tam, extension, cookie_counter, codigo):
     f = ''
@@ -119,32 +129,25 @@ def process_web_request(cs, webroot):
             cerrar_conexion(cs)
             break
         datos = recibir_mensaje(cs)
-        # print(datos)
-        
-        lineas = datos.splitlines()
-        parametros = [lineas[0].split(' ', 1)]
-        parametros += [linea.split(': ', 1) for linea in lineas if ': ' in linea]    
-        parametros = dict((item[0], item[1]) for item in parametros)
-        
         diccionario = dict()
-        patron = r'([^:]*)|:\s(.*)$'
+        lineas = datos.splitlines()
+        patron = r'[^:\s]*'
+        separador = r': '
         for linea in lineas:
             if re.match(r'^GET|^POST', linea):
-                print('PRIMERA LINEA')
+                diccionario[lineas[0].split(' ', 1)[0]] = lineas[0].split(' ', 1)[1].split(' ')
             elif linea != '':
                 er = re.compile(patron)
-                coin = er.fullmatch(linea)
-                print(coin)
-                #diccionario[er.group(1)] = er.group(2)
-                
-        print(diccionario)
+                coin = er.search(linea)
+                er2 = re.compile(separador)
+                valor = er2.search(linea)
+                diccionario[coin.group()] = linea[valor.end():]
         
-        if parametros[0][1].split(' ')[1] == 'HTTP/1.1':
+        if diccionario['GET'][1] == 'HTTP/1.1':
             print('Versión 1.1 de HTTP')
-        
-        if parametros[0][0] == 'GET':
-            print('Método GET ' + parametros[0][1].split(' ')[0])
-        elif parametros[0][0] == 'POST':
+        if list(diccionario.keys())[0] == 'GET':
+            print('Método GET ' + diccionario['GET'][0])
+        elif list(diccionario.keys())[0] == 'POST':
             print('Método POST')
         else:
             print('Method Not Allowed 405')
@@ -153,19 +156,19 @@ def process_web_request(cs, webroot):
         
         print("Conexión: " + str(cs))
         
-        if parametros[0][1].split(' ')[0] == '/' or parametros[0][1].split(' ')[0] == '/index.html':
-            parametros[0][1] = '/index.html'
-        ruta_absoluta = webroot + parametros[0][1].split(' ')[0]
-        
+        if diccionario['GET'][0] == '/' or diccionario['GET'][0] == '/index.html':
+            diccionario['GET'][0] = '/index.html'
+        ruta_absoluta = webroot + diccionario['GET'][0]
+        cookie_counter = 0
         if os.path.isfile(ruta_absoluta):
             tam = os.stat(ruta_absoluta).st_size
             extension = os.path.basename(ruta_absoluta).split('.')[1]
-            cookie_counter = process_cookies(parametros, cs)
-            print("Cookie counter: " + str(cookie_counter))
             if cookie_counter == MAX_ACCESOS:
                 construir_cabeceras(0, '', cookie_counter, 403)
                 cerrar_conexion(cs)
             else:
+                cookie_counter = process_cookies(diccionario, cs)
+                print("Cookie counter: " + str(cookie_counter))
                 resp = construir_cabeceras(tam, extension, cookie_counter, 200)
                 resp += construir_mensaje(ruta_absoluta)
                 bytes = enviar_mensaje(cs, resp)
