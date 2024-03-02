@@ -50,6 +50,8 @@ def recibir_mensaje(cs):
 def cerrar_conexion(cs):
     """ Esta función cierra una conexión activa.
     """
+    print("Cerrando conexión " + str(cs))
+    cs.close()
     pass
 
 
@@ -61,18 +63,20 @@ def process_cookies(headers,  cs):
         4. Si se encuentra y tiene el valor MAX_ACCESSOS se devuelve MAX_ACCESOS
         5. Si se encuentra y tiene un valor 1 <= x < MAX_ACCESOS se incrementa en 1 y se devuelve el valor
     """
-    for param in headers:
-        if param[0] == 'Cookie':
-            if re.fullmatch('cookie_counter=', param[1]):
-                string = param[1].split('cookie_counter=')
-                cookie_counter = re.match('^[0-9]+', string[1]).group()
-                if cookie_counter == MAX_ACCESOS:
-                    return MAX_ACCESOS
-                elif cookie_counter >= 1 and cookie_counter < MAX_ACCESOS:
-                    cookie_counter += 1
-                    return cookie_counter
-        else:
-            return 1
+    # for param in headers:
+    #     if param[0] == 'Cookie':
+    #         if re.fullmatch('cookie_counter=', param[1]):
+    #             string = param[1].split('cookie_counter=')
+    #             cookie_counter = re.match('^[0-9]+', string[1]).group()
+    #             if cookie_counter == MAX_ACCESOS:
+    #                 return MAX_ACCESOS
+    #             elif cookie_counter >= 1 and cookie_counter < MAX_ACCESOS:
+    #                 cookie_counter += 1
+    #                 return cookie_counter
+    #     else:
+    #     return 1
+    
+    pass
             
 def construir_cabeceras(tam, extension, cookie_counter, codigo):
     f = ''
@@ -112,11 +116,28 @@ def process_web_request(cs, webroot):
         rsublist, _, _ = select.select(rlist, wlist, xlist, TIMEOUT_CONNECTION)
         if rsublist == []:
             print('Salta por timeout')
+            cerrar_conexion(cs)
             break
         datos = recibir_mensaje(cs)
+        # print(datos)
+        
         lineas = datos.splitlines()
         parametros = [lineas[0].split(' ', 1)]
-        parametros += [linea.split(': ', 1) for linea in lineas if ': ' in linea]            
+        parametros += [linea.split(': ', 1) for linea in lineas if ': ' in linea]    
+        parametros = dict((item[0], item[1]) for item in parametros)
+        
+        diccionario = dict()
+        patron = r'([^:]*)|:\s(.*)$'
+        for linea in lineas:
+            if re.match(r'^GET|^POST', linea):
+                print('PRIMERA LINEA')
+            elif linea != '':
+                er = re.compile(patron)
+                coin = er.fullmatch(linea)
+                print(coin)
+                #diccionario[er.group(1)] = er.group(2)
+                
+        print(diccionario)
         
         if parametros[0][1].split(' ')[1] == 'HTTP/1.1':
             print('Versión 1.1 de HTTP')
@@ -130,6 +151,8 @@ def process_web_request(cs, webroot):
             construir_cabeceras(0, '', 0, 405)
             cerrar_conexion(cs)
         
+        print("Conexión: " + str(cs))
+        
         if parametros[0][1].split(' ')[0] == '/' or parametros[0][1].split(' ')[0] == '/index.html':
             parametros[0][1] = '/index.html'
         ruta_absoluta = webroot + parametros[0][1].split(' ')[0]
@@ -138,6 +161,7 @@ def process_web_request(cs, webroot):
             tam = os.stat(ruta_absoluta).st_size
             extension = os.path.basename(ruta_absoluta).split('.')[1]
             cookie_counter = process_cookies(parametros, cs)
+            print("Cookie counter: " + str(cookie_counter))
             if cookie_counter == MAX_ACCESOS:
                 construir_cabeceras(0, '', cookie_counter, 403)
                 cerrar_conexion(cs)
