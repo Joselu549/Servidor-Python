@@ -1,27 +1,26 @@
 # coding=utf-8
-#!/usr/bin/env python3
+# !/usr/bin/env python3
 
 import socket
-import selectors    #https://docs.python.org/3/library/selectors.html
+import selectors  # https://docs.python.org/3/library/selectors.html
 import select
-import types        # Para definir el tipo de datos data
-import argparse     # Leer parametros de ejecución
-import os           # Obtener ruta y extension
+import types  # Para definir el tipo de datos data
+import argparse  # Leer parametros de ejecución
+import os  # Obtener ruta y extension
 # import multiprocessing
-from datetime import datetime, timedelta # Fechas de los mensajes HTTP
-import time         # Timeout conexión
-import sys          # sys.exit
-import re           # Analizador sintáctico
-import logging      # Para imprimir logs
+from datetime import datetime, timedelta  # Fechas de los mensajes HTTP
+import time  # Timeout conexión
+import sys  # sys.exit
+import re  # Analizador sintáctico
+import logging  # Para imprimir logs
 
-
-BUFSIZE = 8192 # Tamaño máximo del buffer que se puede utilizar
-TIMEOUT_CONNECTION = 2+7+5+9+10 # Timout para la conexión persistente
+BUFSIZE = 8192  # Tamaño máximo del buffer que se puede utilizar
+TIMEOUT_CONNECTION = 2 + 7 + 5 + 9 + 10  # Timout para la conexión persistente
 MAX_ACCESOS = 10
 
 # Extensiones admitidas (extension, name in HTTP)
-filetypes = {"gif":"image/gif", "jpg":"image/jpg", "jpeg":"image/jpeg", "png":"image/png", "htm":"text/htm", 
-             "html":"text/html", "css":"text/css", "js":"text/js"}
+filetypes = {"gif": "image/gif", "jpg": "image/jpg", "jpeg": "image/jpeg", "png": "image/png", "htm": "text/htm",
+             "html": "text/html", "css": "text/css", "js": "text/js"}
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO,
@@ -37,6 +36,7 @@ def enviar_mensaje(cs, data):
     bytes = cs.send(data)
     return bytes
 
+
 def recibir_mensaje(cs):
     """ Esta función recibe datos a través del socket cs
         Leemos la información que nos llega. recv() devuelve un string con los datos.
@@ -50,12 +50,11 @@ def recibir_mensaje(cs):
 def cerrar_conexion(cs):
     """ Esta función cierra una conexión activa.
     """
-    print("Cerrando conexión " + str(cs))
     cs.close()
     pass
 
 
-def process_cookies(diccionario,  cs, cookie_counter):
+def process_cookies(diccionario, cs, cookie_counter):
     """ Esta función procesa la cookie cookie_counter
         1. Se analizan las cabeceras en headers para buscar la cabecera Cookie
         2. Una vez encontrada una cabecera Cookie se comprueba si el valor es cookie_counter
@@ -63,45 +62,16 @@ def process_cookies(diccionario,  cs, cookie_counter):
         4. Si se encuentra y tiene el valor MAX_ACCESSOS se devuelve MAX_ACCESOS
         5. Si se encuentra y tiene un valor 1 <= x < MAX_ACCESOS se incrementa en 1 y se devuelve el valor
     """
-    # for param in headers:
-    #     if param[0] == 'Cookie':
-    #         if re.fullmatch('cookie_counter=', param[1]):
-    #             string = param[1].split('cookie_counter=')
-    #             cookie_counter = re.match('^[0-9]+', string[1]).group()
-    #             if cookie_counter == MAX_ACCESOS:
-    #                 return MAX_ACCESOS
-    #             elif cookie_counter >= 1 and cookie_counter < MAX_ACCESOS:
-    #                 cookie_counter += 1
-    #                 return cookie_counter
-    #     else:
-    #     return 1
-    
-    # valor = headers['Cookie']
-    # print(valor)
-    # if re.match(r'cookie_counter=', valor):
-    #     cookie_counter = valor.split('cookie_counter=')[1].split(';')[0]
-    #     if cookie_counter == MAX_ACCESOS:
-    #         return MAX_ACCESOS
-    #     elif cookie_counter >= 1 and cookie_counter < MAX_ACCESOS:
-    #         cookie_counter += 1
-    #         return cookie_counter
-    print('ENTRA COOKIE COUNTER')
     if 'Cookie' in diccionario:
-        print('HAY COOKIE')
-                # if int(diccionario['Cookie']) == MAX_ACCESOS:
-                #     return MAX_ACCESOS
-                # elif int(diccionario['Cookie']) >= 1 and int(diccionario['Cookie']) < MAX_ACCESOS:
-                #     return cookie_counter + 1
         val = diccionario['Cookie']
         if val == 'None':
             val = 0
         else:
             val = int(val)
-        print(val)
         if val == MAX_ACCESOS:
             return MAX_ACCESOS
         if diccionario['GET'][0] == '/index.html':
-            if val >= 1 and val < MAX_ACCESOS:
+            if 1 <= val < MAX_ACCESOS:
                 return cookie_counter + 1
             else:
                 return 1
@@ -109,7 +79,8 @@ def process_cookies(diccionario,  cs, cookie_counter):
             return cookie_counter
     else:
         return 1
-            
+
+
 def construir_cabeceras(tam, extension, cookie_counter, codigo):
     f = ''
     if codigo == 400:
@@ -133,13 +104,15 @@ def construir_cabeceras(tam, extension, cookie_counter, codigo):
     f += '\r\n'
     return f.encode()
 
+
 def construir_mensaje(ruta):
     f = b''
     fichero = open(ruta, 'rb')
     while read_bytes := fichero.read(BUFSIZE):
         f += read_bytes
     return f
-    
+
+
 def process_web_request(cs, webroot):
     rlist = [cs]
     wlist = []
@@ -147,13 +120,14 @@ def process_web_request(cs, webroot):
     cookie_counter = 0
     while True:
         rsublist, _, _ = select.select(rlist, wlist, xlist, TIMEOUT_CONNECTION)
-        if rsublist == []:
+        if not rsublist:
             print('Salta por timeout')
             cerrar_conexion(cs)
-            
+
         datos = recibir_mensaje(cs)
-        if (datos == ''):
+        if datos == '':
             print('DATOS VACÍOS')
+            return
         diccionario = dict()
         lineas = datos.splitlines()
         patron = r'[^:\s]*'
@@ -173,22 +147,20 @@ def process_web_request(cs, webroot):
                 email = linea[6:]
                 er_arroba = re.compile(r'%40')
                 email = er_arroba.sub('@', email)
-                print(email)
-                if re.match(r'.+@um.es', email):
+                print('Email recibido: ' + email)
+                if re.match(pattern=r'.+@um.es',string=email):
                     tam = os.stat('./accion_form.html').st_size
                     extension = 'html'
                     resp = construir_cabeceras(tam, extension, cookie_counter, 200)
                     resp += construir_mensaje('./accion_form.html')
-                    print('envía bueno')
                     enviar_mensaje(cs, resp)
                     cerrar_conexion(cs)
                     return
                 else:
                     tam = os.stat('./emailincorrecto.html').st_size
                     extension = 'html'
-                    resp = construir_cabeceras(tam, extension, cookie_counter, 200) # CAMBIAR CÓDIGO DE ERROR
+                    resp = construir_cabeceras(tam, extension, cookie_counter, 200)  # CAMBIAR CÓDIGO DE ERROR
                     resp += construir_mensaje('./emailincorrecto.html')
-                    print('envía malo')
                     enviar_mensaje(cs, resp)
                     cerrar_conexion(cs)
                     return
@@ -198,12 +170,12 @@ def process_web_request(cs, webroot):
                 er2 = re.compile(separador)
                 valor = er2.search(linea)
                 diccionario[coin.group()] = linea[valor.end():]
-        
+
         try:
             recurso = diccionario['GET']
         except:
             recurso = diccionario['POST']
-        
+
         if recurso[1] == 'HTTP/1.1':
             print('Versión 1.1 de HTTP')
         if list(diccionario.keys())[0] == 'GET':
@@ -217,8 +189,6 @@ def process_web_request(cs, webroot):
             resp += construir_mensaje('./error400.html')
             cerrar_conexion(cs)
             return
-        
-        print("Conexión: " + str(cs))
         if recurso[0] == '/' or recurso[0] == '/index.html':
             recurso[0] = '/index.html'
         ruta_absoluta = webroot + recurso[0]
@@ -229,16 +199,17 @@ def process_web_request(cs, webroot):
             extension = os.path.basename(ruta_absoluta).split('.')[1]
             resp = construir_cabeceras(tam, extension, cookie_counter, 200)
             resp += construir_mensaje(ruta_absoluta)
-            bytes = enviar_mensaje(cs, resp)
+            enviar_mensaje(cs, resp)
             cookie_counter = process_cookies(diccionario, cs, cookie_counter)
-            print("Cookie counter: " + str(cookie_counter))
+            print('Cookie counter: ' + str(cookie_counter))
+            print('---------------------')
             if cookie_counter == MAX_ACCESOS:
                 tam = os.stat('./error403.html').st_size
                 resp = construir_cabeceras(tam, 'html', cookie_counter, 403)
                 resp += construir_mensaje('./error403.html')
                 enviar_mensaje(cs, resp)
                 cerrar_conexion(cs)
-                return  
+                return
         else:
             tam = os.stat('./error404.html').st_size
             extension = os.path.basename('./error404.html').split('.')[1]
@@ -247,7 +218,7 @@ def process_web_request(cs, webroot):
             enviar_mensaje(cs, resp)
             cerrar_conexion(cs)
             return
-        
+
     """ Procesamiento principal de los mensajes recibidos.
         Típicamente se seguirá un procedimiento similar al siguiente (aunque el alumno puede modificarlo si lo desea)
 
@@ -283,6 +254,7 @@ def process_web_request(cs, webroot):
                 * NOTA: Si hay algún error, enviar una respuesta de error con una pequeña página HTML que informe del error.
     """
 
+
 def main():
     """ Función principal del servidor
     """
@@ -293,10 +265,10 @@ def main():
         parser = argparse.ArgumentParser()
         parser.add_argument("-p", "--port", help="Puerto del servidor", type=int, required=True)
         parser.add_argument("-ip", "--host", help="Dirección IP del servidor o localhost", required=True)
-        parser.add_argument("-wb", "--webroot", help="Directorio base desde donde se sirven los ficheros (p.ej. /home/user/mi_web)")
+        parser.add_argument("-wb", "--webroot",
+                            help="Directorio base desde donde se sirven los ficheros (p.ej. /home/user/mi_web)")
         parser.add_argument('--verbose', '-v', action='store_true', help='Incluir mensajes de depuración en la salida')
         args = parser.parse_args()
-
 
         if args.verbose:
             logger.setLevel(logging.DEBUG)
@@ -324,7 +296,7 @@ def main():
         s1 = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0)
         s1.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s1.bind((args.host, args.port))
-        
+
         s1.listen()
 
         while True:
@@ -340,13 +312,13 @@ def main():
                 process_web_request(cs=s2, webroot=args.webroot)
                 s1.close()
                 print('Cierra conexión padre')
-                
+                break
             else:
                 s2.close()
-            #break
     except KeyboardInterrupt:
         True
 
-if __name__== "__main__":
+
+if __name__ == "__main__":
     main()
     print('FIN')
