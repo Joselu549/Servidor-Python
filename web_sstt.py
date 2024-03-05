@@ -16,7 +16,7 @@ import logging      # Para imprimir logs
 
 
 BUFSIZE = 8192 # Tamaño máximo del buffer que se puede utilizar
-TIMEOUT_CONNECTION = 9+7+5+2+10 # Timout para la conexión persistente
+TIMEOUT_CONNECTION = 2+7+5+9+10 # Timout para la conexión persistente
 MAX_ACCESOS = 10
 
 # Extensiones admitidas (extension, name in HTTP)
@@ -55,7 +55,7 @@ def cerrar_conexion(cs):
     pass
 
 
-def process_cookies(headers,  cs):
+def process_cookies(diccionario,  cs, cookie_counter):
     """ Esta función procesa la cookie cookie_counter
         1. Se analizan las cabeceras en headers para buscar la cabecera Cookie
         2. Una vez encontrada una cabecera Cookie se comprueba si el valor es cookie_counter
@@ -76,39 +76,61 @@ def process_cookies(headers,  cs):
     #     else:
     #     return 1
     
-    valor = headers['Cookie']
-    print(valor)
-    if re.match(r'cookie_counter=', valor):
-        cookie_counter = valor.split('cookie_counter=')[1].split(';')[0]
-        if cookie_counter == MAX_ACCESOS:
+    # valor = headers['Cookie']
+    # print(valor)
+    # if re.match(r'cookie_counter=', valor):
+    #     cookie_counter = valor.split('cookie_counter=')[1].split(';')[0]
+    #     if cookie_counter == MAX_ACCESOS:
+    #         return MAX_ACCESOS
+    #     elif cookie_counter >= 1 and cookie_counter < MAX_ACCESOS:
+    #         cookie_counter += 1
+    #         return cookie_counter
+    print('ENTRA COOKIE COUNTER')
+    if 'Cookie' in diccionario:
+        print('HAY COOKIE')
+                # if int(diccionario['Cookie']) == MAX_ACCESOS:
+                #     return MAX_ACCESOS
+                # elif int(diccionario['Cookie']) >= 1 and int(diccionario['Cookie']) < MAX_ACCESOS:
+                #     return cookie_counter + 1
+        val = diccionario['Cookie']
+        if val == 'None':
+            val = 0
+        else:
+            val = int(val)
+        print(val)
+        if val == MAX_ACCESOS:
             return MAX_ACCESOS
-        elif cookie_counter >= 1 and cookie_counter < MAX_ACCESOS:
-            cookie_counter += 1
+        if diccionario['GET'][0] == '/index.html':
+            if val >= 1 and val < MAX_ACCESOS:
+                return cookie_counter + 1
+            else:
+                return 1
+        else:
             return cookie_counter
-    
-    return 1
+    else:
+        return 1
             
 def construir_cabeceras(tam, extension, cookie_counter, codigo):
     f = ''
-    if codigo == 405:
-        f += 'HTTP/1.1 405 Method Not Allowed\r\n'
+    if codigo == 400:
+        f += 'HTTP/1.1 400 Bad Request\r\n'
         f += 'Allow: GET, POST\r\n'
     elif codigo == 404:
         f += 'HTTP/1.1 404 Not Found\r\n'
     elif codigo == 403:
         f += 'HTTP/1.1 403 Forbidden\r\n'
-    else:
+    elif codigo == 200:
         f += 'HTTP/1.1 200 OK\r\n'
-        f += 'Date: ' + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT\r\n')
-        f += 'Server: Servidor Python/1.0.0 (Linux)\r\n'
-        f += 'Connection: Keep-Alive\r\n'
-        f += 'Set-Cookie: ' + str(cookie_counter) + '\r\n'
-        f += 'Content-Length: ' + str(tam) + '\r\n'
-        if extension == 'html':
-            f += 'Content-Type: text/' + str(extension) + '; charset=ISO-8859-1\r\n'
-        else:
-            f += 'Content-Type: image/' + str(extension) + '\r\n'
-        f += '\r\n'
+    f += 'Date: ' + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT\r\n')
+    f += 'Server: Servidor Python/1.0.0 (Linux)\r\n'
+    f += 'Connection: Keep-Alive\r\n'
+    f += 'Set-Cookie: ' + str(cookie_counter) + '\r\n'
+    f += 'Content-Length: ' + str(tam) + '\r\n'
+    if extension == 'html':
+        f += 'Content-Type: text/' + str(extension) + '; charset=ISO-8859-1\r\n'
+    else:
+        f += 'Content-Type: image/' + str(extension) + '\r\n'
+    f += '\r\n'
     return f.encode()
 
 def construir_mensaje(ruta):
@@ -122,13 +144,16 @@ def process_web_request(cs, webroot):
     rlist = [cs]
     wlist = []
     xlist = []
+    cookie_counter = 0
     while True:
         rsublist, _, _ = select.select(rlist, wlist, xlist, TIMEOUT_CONNECTION)
         if rsublist == []:
             print('Salta por timeout')
             cerrar_conexion(cs)
-            break
+            
         datos = recibir_mensaje(cs)
+        if (datos == ''):
+            print('DATOS VACÍOS')
         diccionario = dict()
         lineas = datos.splitlines()
         patron = r'[^:\s]*'
@@ -136,6 +161,37 @@ def process_web_request(cs, webroot):
         for linea in lineas:
             if re.match(r'^GET|^POST', linea):
                 diccionario[lineas[0].split(' ', 1)[0]] = lineas[0].split(' ', 1)[1].split(' ')
+                if len(diccionario[lineas[0].split(' ', 1)[0]]) != 2:
+                    tam = os.stat('./error400.html').st_size
+                    extension = 'html'
+                    resp = construir_cabeceras(tam, extension, cookie_counter, 400)
+                    resp += construir_mensaje('./error400.html')
+                    enviar_mensaje(cs, resp)
+                    cerrar_conexion(cs)
+                    return
+            elif re.match(r'email=', linea):
+                email = linea[6:]
+                er_arroba = re.compile(r'%40')
+                email = er_arroba.sub('@', email)
+                print(email)
+                if re.match(r'.+@um.es', email):
+                    tam = os.stat('./accion_form.html').st_size
+                    extension = 'html'
+                    resp = construir_cabeceras(tam, extension, cookie_counter, 200)
+                    resp += construir_mensaje('./accion_form.html')
+                    print('envía bueno')
+                    enviar_mensaje(cs, resp)
+                    cerrar_conexion(cs)
+                    return
+                else:
+                    tam = os.stat('./emailincorrecto.html').st_size
+                    extension = 'html'
+                    resp = construir_cabeceras(tam, extension, cookie_counter, 200) # CAMBIAR CÓDIGO DE ERROR
+                    resp += construir_mensaje('./emailincorrecto.html')
+                    print('envía malo')
+                    enviar_mensaje(cs, resp)
+                    cerrar_conexion(cs)
+                    return
             elif linea != '':
                 er = re.compile(patron)
                 coin = er.search(linea)
@@ -143,42 +199,54 @@ def process_web_request(cs, webroot):
                 valor = er2.search(linea)
                 diccionario[coin.group()] = linea[valor.end():]
         
-        if diccionario['GET'][1] == 'HTTP/1.1':
+        try:
+            recurso = diccionario['GET']
+        except:
+            recurso = diccionario['POST']
+        
+        if recurso[1] == 'HTTP/1.1':
             print('Versión 1.1 de HTTP')
         if list(diccionario.keys())[0] == 'GET':
-            print('Método GET ' + diccionario['GET'][0])
+            print('Método GET ' + recurso[0])
         elif list(diccionario.keys())[0] == 'POST':
-            print('Método POST')
+            print('Método POST ' + recurso[0])
         else:
-            print('Method Not Allowed 405')
-            construir_cabeceras(0, '', 0, 405)
+            tam = os.stat('./error400.html').st_size
+            extension = 'html'
+            resp = construir_cabeceras(tam, extension, cookie_counter, 400)
+            resp += construir_mensaje('./error400.html')
             cerrar_conexion(cs)
+            return
         
         print("Conexión: " + str(cs))
-        
-        if diccionario['GET'][0] == '/' or diccionario['GET'][0] == '/index.html':
-            diccionario['GET'][0] = '/index.html'
-        ruta_absoluta = webroot + diccionario['GET'][0]
-        cookie_counter = 0
+        if recurso[0] == '/' or recurso[0] == '/index.html':
+            recurso[0] = '/index.html'
+        ruta_absoluta = webroot + recurso[0]
+        print(ruta_absoluta)
+
         if os.path.isfile(ruta_absoluta):
             tam = os.stat(ruta_absoluta).st_size
             extension = os.path.basename(ruta_absoluta).split('.')[1]
+            resp = construir_cabeceras(tam, extension, cookie_counter, 200)
+            resp += construir_mensaje(ruta_absoluta)
+            bytes = enviar_mensaje(cs, resp)
+            cookie_counter = process_cookies(diccionario, cs, cookie_counter)
+            print("Cookie counter: " + str(cookie_counter))
             if cookie_counter == MAX_ACCESOS:
-                construir_cabeceras(0, '', cookie_counter, 403)
+                tam = os.stat('./error403.html').st_size
+                resp = construir_cabeceras(tam, 'html', cookie_counter, 403)
+                resp += construir_mensaje('./error403.html')
+                enviar_mensaje(cs, resp)
                 cerrar_conexion(cs)
-            else:
-                cookie_counter = process_cookies(diccionario, cs)
-                print("Cookie counter: " + str(cookie_counter))
-                resp = construir_cabeceras(tam, extension, cookie_counter, 200)
-                resp += construir_mensaje(ruta_absoluta)
-                bytes = enviar_mensaje(cs, resp)
+                return  
         else:
-            construir_cabeceras(0, '', 0, 404)
+            tam = os.stat('./error404.html').st_size
+            extension = os.path.basename('./error404.html').split('.')[1]
+            resp = construir_cabeceras(tam, extension, None, 404)
+            resp += construir_mensaje('./error404.html')
+            enviar_mensaje(cs, resp)
             cerrar_conexion(cs)
-            
-        
-        
-        
+            return
         
     """ Procesamiento principal de los mensajes recibidos.
         Típicamente se seguirá un procedimiento similar al siguiente (aunque el alumno puede modificarlo si lo desea)
@@ -270,10 +338,15 @@ def main():
 
             if pid == 0:
                 process_web_request(cs=s2, webroot=args.webroot)
+                s1.close()
+                print('Cierra conexión padre')
+                
             else:
                 s2.close()
+            #break
     except KeyboardInterrupt:
         True
 
 if __name__== "__main__":
     main()
+    print('FIN')
