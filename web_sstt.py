@@ -15,7 +15,7 @@ import re  # Analizador sintáctico
 import logging  # Para imprimir logs
 
 BUFSIZE = 8192  # Tamaño máximo del buffer que se puede utilizar
-TIMEOUT_CONNECTION = 2 + 7 + 5 + 9 + 10  # Timout para la conexión persistente
+TIMEOUT_CONNECTION = 9 + 2 + 9 + 7 + 10  # Timout para la conexión persistente
 MAX_ACCESOS = 10
 
 # Extensiones admitidas (extension, name in HTTP)
@@ -51,10 +51,11 @@ def cerrar_conexion(cs):
     """ Esta función cierra una conexión activa.
     """
     cs.close()
+    
     pass
 
 
-def process_cookies(diccionario, cs, cookie_counter):
+def process_cookies(diccionario, cookie_counter):
     """ Esta función procesa la cookie cookie_counter
         1. Se analizan las cabeceras en headers para buscar la cabecera Cookie
         2. Una vez encontrada una cabecera Cookie se comprueba si el valor es cookie_counter
@@ -64,17 +65,24 @@ def process_cookies(diccionario, cs, cookie_counter):
     """
     if 'Cookie' in diccionario:
         val = diccionario['Cookie']
-        if val == 'None':
-            val = 0
+        
+        er_cookie = r'cookie_counter_9297=(\d+)'
+        res = re.match(er_cookie, val)
+        
+        if res:
+            val = res.group(1)
+            print(val)
+            if val == 0:
+                return val
         else:
-            val = int(val)
-        if val == MAX_ACCESOS:
-            return MAX_ACCESOS
+            return 1
+        
+        val = int(val)
         if diccionario['GET'][0] == '/index.html':
             if 1 <= val < MAX_ACCESOS:
                 return cookie_counter + 1
-            else:
-                return 1
+            elif val == MAX_ACCESOS:
+                return MAX_ACCESOS
         else:
             return cookie_counter
     else:
@@ -93,9 +101,9 @@ def construir_cabeceras(tam, extension, cookie_counter, codigo):
     elif codigo == 200:
         f += 'HTTP/1.1 200 OK\r\n'
     f += 'Date: ' + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT\r\n')
-    f += 'Server: Servidor Python/1.0.0 (Linux)\r\n'
+    f += 'Server: www..com\r\n'
     f += 'Connection: Keep-Alive\r\n'
-    f += 'Set-Cookie: ' + str(cookie_counter) + '\r\n'
+    f += 'Set-Cookie: cookie_counter_9297=' + str(cookie_counter) + '; Max-Age=15\r\n'
     f += 'Content-Length: ' + str(tam) + '\r\n'
     if extension == 'html':
         f += 'Content-Type: text/' + str(extension) + '; charset=ISO-8859-1\r\n'
@@ -193,23 +201,25 @@ def process_web_request(cs, webroot):
             recurso[0] = '/index.html'
         ruta_absoluta = webroot + recurso[0]
         print(ruta_absoluta)
-
-        if os.path.isfile(ruta_absoluta):
-            tam = os.stat(ruta_absoluta).st_size
-            extension = os.path.basename(ruta_absoluta).split('.')[1]
-            resp = construir_cabeceras(tam, extension, cookie_counter, 200)
-            resp += construir_mensaje(ruta_absoluta)
+        if cookie_counter == MAX_ACCESOS and recurso[0] == '/index.html':
+            print('ENTRA A CERRAR POR MAX ACCESOS')
+            print('ENVIA 403')
+            tam = os.stat('./error403.html').st_size
+            resp = construir_cabeceras(tam, 'html', cookie_counter, 403)
+            resp += construir_mensaje('./error403.html')
             enviar_mensaje(cs, resp)
-            cookie_counter = process_cookies(diccionario, cs, cookie_counter)
-            print('Cookie counter: ' + str(cookie_counter))
-            print('---------------------')
-            if cookie_counter == MAX_ACCESOS:
-                tam = os.stat('./error403.html').st_size
-                resp = construir_cabeceras(tam, 'html', cookie_counter, 403)
-                resp += construir_mensaje('./error403.html')
+            cerrar_conexion(cs)
+            return
+        elif os.path.isfile(ruta_absoluta):
+                print('ENVIA 200')
+                tam = os.stat(ruta_absoluta).st_size
+                extension = os.path.basename(ruta_absoluta).split('.')[1]
+                resp = construir_cabeceras(tam, extension, cookie_counter, 200)
+                resp += construir_mensaje(ruta_absoluta)
                 enviar_mensaje(cs, resp)
-                cerrar_conexion(cs)
-                return
+                print('Cookie counter: ' + str(cookie_counter))
+                print('---------------------')
+                cookie_counter = process_cookies(diccionario, cookie_counter)
         else:
             tam = os.stat('./error404.html').st_size
             extension = os.path.basename('./error404.html').split('.')[1]
@@ -309,10 +319,10 @@ def main():
             pid = os.fork()
 
             if pid == 0:
-                process_web_request(cs=s2, webroot=args.webroot)
                 s1.close()
                 print('Cierra conexión padre')
-                break
+                process_web_request(cs=s2, webroot=args.webroot)
+                os._exit(0)
             else:
                 s2.close()
     except KeyboardInterrupt:
