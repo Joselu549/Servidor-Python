@@ -116,8 +116,11 @@ def construir_cabeceras(tam, extension, cookie_counter, codigo):
 def construir_mensaje(ruta):
     f = b''
     fichero = open(ruta, 'rb')
-    while read_bytes := fichero.read(BUFSIZE):
-        f += read_bytes
+    datos = fichero.read(BUFSIZE)
+    while datos != b'':
+        f += datos
+        datos = fichero.read(BUFSIZE)
+    fichero.close()
     return f
 
 
